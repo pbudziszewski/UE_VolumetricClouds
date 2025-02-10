@@ -1,0 +1,32 @@
+#include "/Engine/Public/Platform.ush"
+
+float2 PixelUVSize;
+float2 Scale;
+float SystemTime;
+
+void MainVS(
+	in uint GlobalVertexId : SV_VertexID,
+	out float2 OutUV : TEXCOORD0,
+	out float4 OutPosition : SV_POSITION
+	)
+{
+	OutUV.x = -1.0 + (GlobalVertexId & 1) * 2.0;
+	OutUV.y = -1.0 + (GlobalVertexId & 2);
+	
+	OutPosition = float4(OutUV.x, OutUV.y, 0.0, 1.0);
+	
+	OutUV.x = (OutUV.x + 1.0) * 0.5;
+	OutUV.y = (OutUV.y + 1.0) * 0.5;
+}
+
+
+
+void MainPS(
+	in float2 UV : TEXCOORD0,
+	out float4 OutColor : SV_Target0
+	)
+{
+	UV *= Scale;
+	float3 Color = 0.5 + 0.5 * cos(SystemTime + UV.xyx + float3(0, 2, 4));
+	OutColor = float4(Color, 1.0);
+}

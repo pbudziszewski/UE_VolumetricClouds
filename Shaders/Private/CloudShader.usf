@@ -1,0 +1,26 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/ScreenPass.ush"
+#include "/Engine/Private/PostProcessCommon.ush"
+
+float4x4 Transform;
+float4 Offset;
+
+void MainVS(
+	in float2 InPosition : ATTRIBUTE0,
+	in float4 InColor : ATTRIBUTE1,
+	out float4 OutPosition : SV_POSITION,
+	out float4 OutColor : COLOR0
+	)
+{
+	OutPosition = float4(InPosition, 0, 1);
+	OutColor = InColor;
+}
+
+void MainPS(
+	in float4 InPosition : SV_POSITION,
+	in float4 InColor : COLOR0,
+	out float4 OutColor : SV_Target0)
+{
+	OutColor = fmod(InColor + Offset, 1.0);
+}

@@ -10,9 +10,9 @@
 IMPLEMENT_SHADER_TYPE(, FCloudVS, TEXT("/Plugin/Foo/Private/CloudShader.usf"), TEXT("MainVS"), SF_Vertex)
 IMPLEMENT_SHADER_TYPE(, FCloudPS, TEXT("/Plugin/Foo/Private/CloudShader.usf"), TEXT("MainPS"), SF_Pixel)
 
-TGlobalResource<FTriangleVertexBuffer> GTriangleVertexBuffer;
-TGlobalResource<FTriangleIndexBuffer> GTriangleIndexBuffer;
-TGlobalResource<FTriangleVertexDeclaration> GTriangleVertexDeclaration;
+TGlobalResource<FTriangleVertexBuffer> GCloudVertexBuffer;
+TGlobalResource<FTriangleIndexBuffer> GCloudIndexBuffer;
+TGlobalResource<FTriangleVertexDeclaration> GCloudVertexDeclaration;
 
 // ================================================================================================
 
@@ -73,12 +73,28 @@ FScreenPassTexture FCloudSceneViewExtension::TrianglePass_RenderThread(FRDGBuild
 
 		FMatrix WorldToViewMatrix = View.ViewMatrices.GetViewMatrix();
 		FMatrix ViewToProjMatrix = View.ViewMatrices.GetProjectionMatrix();
-		FMatrix ViewProjMatrix = WorldToViewMatrix * ViewToProjMatrix;
+		FMatrix WorldToProjMatrix = WorldToViewMatrix * ViewToProjMatrix;
 
-		UE_LOG(LogTemp, Warning, TEXT("View Matrix: %s"), *WorldToViewMatrix.ToString());
+		FVector4 v = WorldToViewMatrix.TransformFVector4(FVector4(3000.0, -1000.0, 70.0, 1.0));
+		FVector4 p3 = ViewToProjMatrix.TransformFVector4(v);
+		FVector p4(p3[0] / p3[3], p3[1] / p3[3], p3[2] / p3[3]);
+
+		FVector4 p = WorldToProjMatrix.TransformFVector4(FVector4(3000.0, -1000.0, 70.0, 1.0));
+		FVector p2(p[0] / p[3], p[1] / p[3], p[2] / p[3]);
+
+		UE_LOG(LogTemp, Warning, TEXT("View to proj Matrix: %s"), *ViewToProjMatrix.ToString());
+		UE_LOG(LogTemp, Warning, TEXT("World to view: %s"), *WorldToViewMatrix.ToString());
+
+		UE_LOG(LogTemp, Warning, TEXT("P: %s"), *p.ToString());
+		UE_LOG(LogTemp, Warning, TEXT("P3: %s"), *p3.ToString());
+
+		UE_LOG(LogTemp, Warning, TEXT("P2: %s"), *p2.ToString());
+		UE_LOG(LogTemp, Warning, TEXT("P4: %s"), *p4.ToString());
+
+		UE_LOG(LogTemp, Warning, TEXT("V: %s"), *v.ToString());
 		UE_LOG(LogTemp, Warning, TEXT("==="));
 
-		RenderTriangle(GraphBuilder, ViewShaderMap, ViewInfo, SceneColor, ViewProjMatrix);
+		RenderTriangle(GraphBuilder, ViewShaderMap, ViewInfo, SceneColor, WorldToProjMatrix);
 	}
 
 	return MoveTemp(SceneColor);
@@ -92,13 +108,16 @@ void FCloudSceneViewExtension::RenderTriangle
 	const FGlobalShaderMap* ShaderMap,
 	const FIntRect& ViewInfo,
 	const FScreenPassTexture& InSceneColor,
-	const FMatrix& ViewProjMatrix)
+	const FMatrix& WorldProjMatrix)
 {
 	// Shader Parameter Setup
 	FCloudPSParams* PassParams = GraphBuilder.AllocParameters<FCloudPSParams>();
 	PassParams->RenderTargets[0] = FRenderTargetBinding(InSceneColor.Texture, ERenderTargetLoadAction::ELoad);
 	float GameTime = FApp::GetGameTime();
-	PassParams->Offset = FVector4f(GameTime, GameTime * 0.34, GameTime * 0.47, 0.0);
+	PassParams->Offset = FVector4f(GameTime, GameTime * 1.34, GameTime * 0.47, 0.0);
+
+	FCloudVSParams* VertexShaderParams = GraphBuilder.AllocParameters<FCloudVSParams>();
+	VertexShaderParams->Transform = FMatrix44f(WorldProjMatrix);
 
 	// Create Pixel Shader
 	TShaderMapRef<FCloudPS> PixelShader(ShaderMap);
@@ -110,7 +129,7 @@ void FCloudSceneViewExtension::RenderTriangle
 		Forward<FRDGEventName>(RDG_EVENT_NAME("CloudPass")),
 		PassParams,
 		ERDGPassFlags::Raster,
-		[PassParams, ShaderMap, PixelShader, ViewInfo](FRHICommandList& RHICmdList)
+		[VertexShaderParams, PassParams, ShaderMap, PixelShader, ViewInfo](FRHICommandList& RHICmdList)
 		{
 			RHICmdList.SetViewport((float)ViewInfo.Min.X, (float)ViewInfo.Min.Y, 0.0f, (float)ViewInfo.Max.X, (float)ViewInfo.Max.Y, 1.0f);
 
@@ -123,7 +142,7 @@ void FCloudSceneViewExtension::RenderTriangle
 			GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
 			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
-			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GTriangleVertexDeclaration.VertexDeclarationRHI;
+			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GCloudVertexDeclaration.VertexDeclarationRHI;
 			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
 			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
@@ -135,15 +154,18 @@ void FCloudSceneViewExtension::RenderTriangle
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
 
 			SetShaderParameters(RHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParams);
+			SetShaderParameters(RHICmdList, VertexShader, VertexShader.GetVertexShader(), *VertexShaderParams);
 
-			RHICmdList.SetStreamSource(0, GTriangleVertexBuffer.VertexBufferRHI, 0);
+			RHICmdList.SetStreamSource(0, GCloudVertexBuffer.VertexBufferRHI, 0);
+
 			RHICmdList.DrawIndexedPrimitive(
-				GTriangleIndexBuffer.IndexBufferRHI,
+				GCloudIndexBuffer.IndexBufferRHI,
 				/*BaseVertexIndex=*/ 0,
 				/*MinIndex=*/ 0,
-				/*NumVertices=*/ 3,
+				/*NumVertices=*/ 8,
 				/*StartIndex=*/ 0,
-				/*NumPrimitives=*/ 1,
+				/*NumPrimitives=*/ 12,
 				/*NumInstances=*/ 1);
+
 		});
 }

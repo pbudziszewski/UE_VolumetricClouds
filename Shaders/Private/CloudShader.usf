@@ -7,13 +7,14 @@ float4x4 Transform;
 float4 Offset;
 
 void MainVS(
-	in float2 InPosition : ATTRIBUTE0,
+	in float3 InPosition : ATTRIBUTE0,
 	in float4 InColor : ATTRIBUTE1,
 	out float4 OutPosition : SV_POSITION,
 	out float4 OutColor : COLOR0
 	)
 {
-	OutPosition = float4(InPosition, 0, 1);
+	OutPosition = mul(float4(InPosition.x, InPosition.y, InPosition.z, 1.0), Transform);
+	//OutPosition = mul(Transform, float4(InPosition.x, InPosition.y, InPosition.z, 1.0));
 	OutColor = InColor;
 }
 
